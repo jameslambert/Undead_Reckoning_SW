@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
  
 # If QGC is connected to PX4 SITL, you can often listen on 14550.
 # If you're routing MAVLink differently, adjust accordingly.
-master = mavutil.mavlink_connection("udpin:0.0.0.0:14550")
+master = mavutil.mavlink_connection("udpin:0.0.0.0:14540")
 master.wait_heartbeat()
 print("Heartbeat received")
  
