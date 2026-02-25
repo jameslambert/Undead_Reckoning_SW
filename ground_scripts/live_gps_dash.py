@@ -104,7 +104,7 @@ def make_figure():
 
     if latest["lat"] is not None and latest["lon"] is not None:
         center_lat, center_lon = latest["lat"], latest["lon"]
-        zoom = 17  # close zoom for GPS tracking
+        zoom = 15  # close zoom for GPS tracking
 
     fig = go.Figure()
 
@@ -135,7 +135,7 @@ def make_figure():
             lat=elats, lon=elons,
             mode="lines",
             name="GLOBAL_POSITION_INT (est)",
-            line={"width": 3, "dash": "dot"},
+            line={"width": 3}, #,"dash": "dot"},
             hoverinfo="skip"
         ))
         fig.add_trace(go.Scattermap(
