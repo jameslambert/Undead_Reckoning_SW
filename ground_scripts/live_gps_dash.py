@@ -57,6 +57,7 @@ def mavlink_worker():
 
         # Estimated position overlay
         # PX4 often sends GLOBAL_POSITION_INT (EKF fused)
+        # elif mtype == "GLOBAL_POSITION_INT":
         elif mtype == "GLOBAL_POSITION_INT":
             est_lat = msg.lat / 1e7
             est_lon = msg.lon / 1e7
@@ -109,9 +110,10 @@ def make_figure():
     fig = go.Figure()
 
     # Raw GPS trail
-    if len(gps_points) >= 2:
-        lats = [p[0] for p in gps_points]
-        lons = [p[1] for p in gps_points]
+    pts = list(gps_points)
+    if len(pts) >= 2:
+        lats = [p[0] for p in pts]
+        lons = [p[1] for p in pts]
         fig.add_trace(go.Scattermap(
             lat=lats, lon=lons,
             mode="lines",
@@ -128,9 +130,10 @@ def make_figure():
         ))
 
     # Estimated overlay (optional)
-    if len(est_points) >= 2:
-        elats = [p[0] for p in est_points]
-        elons = [p[1] for p in est_points]
+    epts = list(est_points)
+    if len(epts) >= 2:
+        elats = [p[0] for p in epts]
+        elons = [p[1] for p in epts]
         fig.add_trace(go.Scattermap(
             lat=elats, lon=elons,
             mode="lines",

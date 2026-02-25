@@ -7,15 +7,15 @@ Perform the following steps to setup the live plot.
 Setup Map Token: (once)
 
 Mac OS / Linux
-- export MAPBOX_TOKEN="token"
+- export MAPBOX_TOKEN="token_here"
     *** This will only persist for current terminal session ***
     *** To make the token persistent: ***
-- echo 'export MAPBOX_TOKEN="token"' >> ~/.zshrc
+- echo 'export MAPBOX_TOKEN="token_here"' >> ~/.zshrc
     *** then restart terminal or run ***
     - source ~/.zshrc
     
 Windows CMD Prompt
-- setx MAPBOX_TOKEN "token"
+- setx MAPBOX_TOKEN "token_here"
 
 
 Check Map Token:
