@@ -21,7 +21,9 @@ MAX_POINTS = 3000
 
 # store shared telemetry (thread-safe enough for simple append/read patterns)
 gps_points = deque(maxlen=MAX_POINTS)      # list of (lat, lon)
-est_points = deque(maxlen=MAX_POINTS)      # optional overlay (lat, lon)
+est_points = deque(maxlen=MAX_POINTS)      # (lat, lon)
+radio_points = deque(maxlen=MAX_POINTS)
+rc_points = deque(maxlen=MAX_POINTS)
 latest = {"lat": None, "lon": None, "speed_mps": None, "sats": None, "fix": None}
 # latest = {"lat": 40.00871, "lon": -105.24793, "speed_mps": None, "sats": None, "fix": None}
 
@@ -57,11 +59,21 @@ def mavlink_worker():
 
         # Estimated position overlay
         # PX4 often sends GLOBAL_POSITION_INT (EKF fused)
-        # elif mtype == "GLOBAL_POSITION_INT":
         elif mtype == "GLOBAL_POSITION_INT":
             est_lat = msg.lat / 1e7
             est_lon = msg.lon / 1e7
             est_points.append((est_lat, est_lon))
+
+        elif mtype == "RC_CHANNELS":
+            raw = msg.rssi
+            if raw != 255:  # 255 = not supported / unknown
+                rc_points.append((time.time(), raw))  # raw dB-like value, not dBm
+
+        elif mtype == "RADIO_STATUS":
+            rssi_dbm = msg.rssi - 256
+            remrssi_dbm = msg.remrssi - 256
+            snr = msg.rssi - msg.noise
+            radio_points.append((time.time(), rssi_dbm, remrssi_dbm, snr))
 
 
 # start listener
@@ -86,9 +98,10 @@ app.title = "PX4 Live GPS"
 app.layout = html.Div(
     style={"fontFamily": "system-ui", "margin": "12px"},
     children=[
-        html.H3("PX4 Live GPS (Raw) + Speed"),
+        html.H3("PX4 Live GPS (Raw) + Speed + RSSI"),
         html.Div(id="status", style={"marginBottom": "8px"}),
-        dcc.Graph(id="map", style={"height": "80vh"}),
+        dcc.Graph(id="map", style={"height": "60vh"}),
+        dcc.Graph(id="rssi-chart", style={"height": "25vh", "marginTop": "8px"}),
         dcc.Interval(id="tick", interval=500, n_intervals=0),  # 2 Hz UI refresh
         html.Div(
             "Tip: If you see no data, try MAVLINK_CONN=udpin:0.0.0.0:14550",
@@ -105,7 +118,7 @@ def make_figure():
 
     if latest["lat"] is not None and latest["lon"] is not None:
         center_lat, center_lon = latest["lat"], latest["lon"]
-        zoom = 15  # close zoom for GPS tracking
+        zoom = 15.5  # close zoom for GPS tracking
 
     fig = go.Figure()
 
@@ -118,7 +131,7 @@ def make_figure():
             lat=lats, lon=lons,
             mode="lines",
             name="GPS_RAW_INT trail",
-            line={"width": 4},
+            line={"width": 4, "color": "deeppink"},
             hoverinfo="skip"
         ))
         # Latest raw GPS point
@@ -126,7 +139,7 @@ def make_figure():
             lat=[lats[-1]], lon=[lons[-1]],
             mode="markers",
             name="GPS_RAW_INT current",
-            marker={"size": 12},
+            marker={"size": 12, "color": "deeppink"},
         ))
 
     # Estimated overlay (optional)
@@ -138,14 +151,14 @@ def make_figure():
             lat=elats, lon=elons,
             mode="lines",
             name="GLOBAL_POSITION_INT (est)",
-            line={"width": 3}, #,"dash": "dot"},
+            line={"width": 3, "color": "blue"}, #,"dash": "dot"},
             hoverinfo="skip"
         ))
         fig.add_trace(go.Scattermap(
             lat=[elats[-1]], lon=[elons[-1]],
             mode="markers",
             name="Est current",
-            marker={"size": 10, "symbol": "circle"},
+            marker={"size": 10, "symbol": "circle", "color": "blue"},
         ))
 
     # Mapbox layout (satellite)
@@ -186,6 +199,65 @@ def update(_n):
         status += "  |  (MAPBOX_TOKEN not set — satellite tiles may not render)"
 
     return fig, status
+
+@app.callback(
+    Output("rssi-chart", "figure"),
+    Input("tick", "n_intervals")
+)
+
+def update_rssi(_n):
+    fig = go.Figure()
+
+    rpts = list(radio_points)  # snapshot
+    if rpts:
+        t0 = rpts[0][0]
+        fig.add_trace(go.Scatter(
+            x=[p[0] - t0 for p in rpts],
+            y=[p[1] for p in rpts],
+            mode="lines",
+            name="Telemetry RSSI local (dBm)",
+            line={"color": "royalblue"},
+        ))
+        fig.add_trace(go.Scatter(
+            x=[p[0] - t0 for p in rpts],
+            y=[p[2] for p in rpts],
+            mode="lines",
+            name="Telemetry RSSI remote (dBm)",
+            line={"color": "cornflowerblue", "dash": "dot"},
+        ))
+
+    rcpts = list(rc_points)  # snapshot
+    if rcpts:
+        t0 = rcpts[0][0] if not rpts else rpts[0][0]  # align to same t0 if both present
+        fig.add_trace(go.Scatter(
+            x=[p[0] - t0 for p in rcpts],
+            y=[p[1] for p in rcpts],
+            mode="lines",
+            name="RC RSSI (FrSky dB)",
+            line={"color": "tomato"},
+            yaxis="y2",  # separate axis — different units
+        ))
+
+    fig.update_layout(
+        margin=dict(l=40, r=40, t=30, b=40),
+        title="Signal Strength",
+        xaxis=dict(title="Time (s)"),
+        yaxis=dict(
+            title="Telemetry (dBm)", 
+            side="left", 
+            range=[-110, -40],
+        ),
+        yaxis2=dict(
+            title="RC RSSI (dB)",
+            side="right",
+            overlaying="y",
+            showgrid=False,
+            range=[38, 110],
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.2),
+    )
+
+    return fig
 
 
 if __name__ == "__main__":
