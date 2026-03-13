@@ -4,6 +4,10 @@ LIVE_GPS_DASH guide:
 live_gps_dash shows the RAW GPS location downlinked to the GCS through MAVLINK. 
 Perform the following steps to setup the live plot. 
 
+Allow QGC passthrough
+- Application Setting -> Telemetry -> MAVLINK Forewarding -> enable
+    - Port: localhost:14445
+
 Setup Map Token: (once)
 
 Mac OS / Linux
@@ -41,6 +45,7 @@ Windows:
 
 
 Run:
+* First establish QGC connection *
 
 Mac OS / Linux (terminal)
 - python3 live_gps_dash.py

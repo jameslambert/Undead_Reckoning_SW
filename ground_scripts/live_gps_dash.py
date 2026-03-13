@@ -12,7 +12,8 @@ import plotly.graph_objects as go
 import plotly.io as pio
 
 # ---------- CONFIG ----------
-CONN_STR = os.getenv("MAVLINK_CONN", "udpin:0.0.0.0:14540")  # try 14550 if needed
+# CONN_STR = os.getenv("MAVLINK_CONN", "udpin:0.0.0.0:14551")  # try 14550 if needed
+# CONN_STR = os.getenv("MAVLINK_CONN", "COM5")
 MAPBOX_TOKEN = os.getenv("MAPBOX_TOKEN", "")
 pio.mapbox_token = MAPBOX_TOKEN
 
@@ -23,16 +24,17 @@ MAX_POINTS = 3000
 gps_points = deque(maxlen=MAX_POINTS)      # list of (lat, lon)
 est_points = deque(maxlen=MAX_POINTS)      # (lat, lon)
 radio_points = deque(maxlen=MAX_POINTS)
-rc_points = deque(maxlen=MAX_POINTS)
+# rc_points = deque(maxlen=MAX_POINTS)
 latest = {"lat": None, "lon": None, "speed_mps": None, "sats": None, "fix": None}
 # latest = {"lat": 40.00871, "lon": -105.24793, "speed_mps": None, "sats": None, "fix": None}
 
 
 # ---------- MAVLink listener thread ----------
 def mavlink_worker():
-    master = mavutil.mavlink_connection(CONN_STR)
+    # master = mavutil.mavlink_connection(CONN_STR)
+    master = mavutil.mavlink_connection('udpin:127.0.0.1:14445')
     master.wait_heartbeat()
-    print(f"Heartbeat received on {CONN_STR}")
+    print("MAVLink connection established, waiting for GPS_RAW_INT messages...")
 
     while True:
         msg = master.recv_match(blocking=True, timeout=1.0)
@@ -64,19 +66,27 @@ def mavlink_worker():
             est_lon = msg.lon / 1e7
             est_points.append((est_lat, est_lon))
 
-        elif mtype == "RC_CHANNELS":
-            raw = msg.rssi
-            if raw != 255:  # 255 = not supported / unknown
-                rc_points.append((time.time(), raw))  # raw dB-like value, not dBm
+        # elif mtype == "RC_CHANNELS":
+        #     raw = msg.rssi
+        #     if raw != 255:  # 255 = not supported / unknown
+        #         rc_points.append((time.time(), raw))  # raw dB-like value, not dBm
 
         elif mtype == "RADIO_STATUS":
-            rssi_dbm = msg.rssi - 256
-            remrssi_dbm = msg.remrssi - 256
-            snr = msg.rssi - msg.noise
-            radio_points.append((time.time(), rssi_dbm, remrssi_dbm, snr))
+            print(
+                f"RADIO_STATUS rssi={msg.rssi} remrssi={msg.remrssi} "
+                f"noise={msg.noise} remnoise={msg.remnoise} "
+                f"rxerrors={msg.rxerrors} fixed={msg.fixed}"
+            )
+            if msg.rssi != 255 and msg.remrssi != 255:
+                rssi_dbm = (msg.rssi / 1.9) - 127
+                remrssi_dbm = (msg.remrssi / 1.9) - 127
+                # snr = (msg.rssi - msg.noise) / 2
+                # rem_snr = (msg.remrssi - msg.remnoise) / 2.0
+                radio_points.append((time.time(), rssi_dbm, remrssi_dbm)) #, msg.noise, msg.remnoise))
 
 
 # start listener
+print("Connecting to MAVLink")
 threading.Thread(target=mavlink_worker, daemon=True).start()
 
 
@@ -223,20 +233,24 @@ def update_rssi(_n):
             y=[p[2] for p in rpts],
             mode="lines",
             name="Telemetry RSSI remote (dBm)",
-            line={"color": "cornflowerblue", "dash": "dot"},
+            line={"color": "crimson"},
         ))
+        # fig.add_trace(go.Scatter(
+        #     x=[p[0] - t0 for p in rpts],
+        #     y=[p[3] for p in rpts],
+        #     mode="lines",
+        #     name="Noise",
+        #     line={"color": "royalblue", "dash": "dot"},
+        # ))
+        # fig.add_trace(go.Scatter(
+        #     x=[p[0] - t0 for p in rpts],
+        #     y=[p[4] for p in rpts],
+        #     mode="lines",
+        #     name="Remote Noise",
+        #     line={"color": "crimson", "dash": "dot"},
+        # ))
 
-    rcpts = list(rc_points)  # snapshot
-    if rcpts:
-        t0 = rcpts[0][0] if not rpts else rpts[0][0]  # align to same t0 if both present
-        fig.add_trace(go.Scatter(
-            x=[p[0] - t0 for p in rcpts],
-            y=[p[1] for p in rcpts],
-            mode="lines",
-            name="RC RSSI (FrSky dB)",
-            line={"color": "tomato"},
-            yaxis="y2",  # separate axis — different units
-        ))
+    
 
     fig.update_layout(
         margin=dict(l=40, r=40, t=30, b=40),
@@ -245,15 +259,16 @@ def update_rssi(_n):
         yaxis=dict(
             title="Telemetry (dBm)", 
             side="left", 
-            range=[-110, -40],
+            # range=[-110, -40],
+            range=[-127, 0],
         ),
-        yaxis2=dict(
-            title="RC RSSI (dB)",
-            side="right",
-            overlaying="y",
-            showgrid=False,
-            range=[38, 110],
-        ),
+        # yaxis2=dict(
+        #     title="RC RSSI (dB)",
+        #     side="right",
+        #     overlaying="y",
+        #     showgrid=False,
+        #     range=[38, 110],
+        # ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.2),
     )
 
@@ -261,4 +276,4 @@ def update_rssi(_n):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
